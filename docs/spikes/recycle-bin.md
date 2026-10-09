@@ -1,6 +1,6 @@
 # Spike: making "Move to Recycle Bin" fail instead of silently deleting permanently
 
-**Status:** results pending (see "Results" below)  ·  **Milestone:** (a)  ·  **Code:**
+**Status:** complete — awaiting owner sign-off  ·  **Milestone:** (a)  ·  **Code:**
 `crates/cleaner/examples/recycle_spike.rs`  ·  **Runs in:** GitHub Actions `windows-latest`
 and, for the non-registry scenarios, on any Windows PC.
 
@@ -67,4 +67,76 @@ whether restoring it from the bin works, which is the basis for Undo.
 
 ## Results
 
-_Pending the CI run._
+Windows 11 24H2 (build 26100.33438), GitHub Actions `windows-latest`, CI run
+[#5](https://github.com/aziz-hizem/ClearSpace/actions/runs/37994552080). All files were
+sandbox files the spike created itself.
+
+| Scenario | A: `trash` crate | B: IFileOperation + veto sink | B2: B + `FOF_WANTNUKEWARNING` |
+|---|---|---|---|
+| Small file / read-only / Unicode name / path > 260 chars | recycled | recycled | recycled |
+| Folder with nested files | recycled | recycled | recycled |
+| File locked by another handle | kept, generic error | kept, `0x80270027` (in use) | kept, `0x80270027` |
+| **Recycle Bin turned off** | ❌ **silently deleted permanently** | ✅ kept (veto: flags `0x202` lack the recycle bit) | ✅ kept |
+| **Network path** (`\\localhost\C$`) | ❌ **silently deleted permanently** | ✅ kept (veto) | ✅ kept |
+| **Single file larger than the bin quota** | ⚠️ modal dialog (hung 60 s) | ❌ **silently deleted permanently**: flags still said "recycle" (`0x282`); the shell later reported no bin item | ⚠️ modal dialog |
+| Folder larger than the quota (each file small) | ⚠️ modal dialog | ✅ kept (Windows fell back to per-item delete with flags `0x2`, and we vetoed) | ⚠️ modal dialog |
+| Bin nearly full (9 of 10 MB used, then a 5 MB file) | recycled; older items kept 3/3 | same | same |
+| Undo: restore a recycled **folder** | ✅ | ✅ | ✅ |
+| Undo: restore a recycled `.txt` file (via `trash` restore) | ❌ reports success, but nothing is found at the original path afterwards | ❌ same (restore goes through the crate) | ❌ same |
+| Undo: restore a file whose path is > 260 chars | ❌ `E_INVALIDARG` | ❌ same | ❌ same |
+
+Performance (300 small files): `trash::delete_all` 1.1–1.7 s, one IFileOperation batch
+1.0–1.4 s, one operation per file 3.1–4.3 s.
+
+### Side findings
+
+* **The `trash` crate's bin listing drops file extensions.** It reports Explorer's *display*
+  name, which hides extensions of known file types by default (`small.txt` is listed as
+  `small`). That is why its restore can't find files under their real name. Our Undo must not
+  depend on display names.
+* **8.3 short paths.** On the CI runner `%TEMP%` is `C:\Users\RUNNER~1\…`, while the Recycle Bin
+  records `C:\Users\runneradmin\…`. The first spike run compared paths textually and wrongly
+  reported every recycled file as permanently deleted. Path canonicalisation (long names, case,
+  `\\?\` prefixes) is therefore a hard requirement for `crates/safety`, both for the guard and
+  for matching history and Undo records.
+* `PreDeleteItem` returning `E_ABORT` cancels the *whole remaining batch* (as documented), so
+  one vetoed item stops everything queued after it.
+
+## Decision (proposed; needs your OK before the cleaner is built)
+
+1. **Don't use the `trash` crate** for deleting or restoring. It silently deletes permanently in
+   two common situations and its restore is unreliable. It stays only as a dev-dependency of
+   this spike.
+2. **Use IFileOperation directly with the veto sink (approach B), without
+   `FOF_WANTNUKEWARNING`.** That flag only produces a modal Windows dialog, which we can't
+   control from our UI.
+3. **Close the remaining hole (one file bigger than the bin quota) in three layers:**
+   * **Before confirmation (plan build):** for every item, check the drive type (local fixed
+     volume), `NukeOnDelete`, and item size against the volume's bin capacity (`MaxCapacity`,
+     with a safety margin: anything ≥ 90 % of capacity counts as "too big"). Items that fail
+     are shown on the Review screen as **"Can't go to the Recycle Bin"**, excluded by default,
+     and only deletable through the explicit permanent-delete opt-in with its extra
+     confirmation.
+   * **At the last moment (`PreDeleteItem`):** re-read the bin settings and compare against the
+     planned size of *that* item. Veto if it no longer fits. This shrinks the window between
+     check and delete to milliseconds.
+   * **After (`PostDeleteItem`):** if an item meant for the bin comes back with no bin item, the
+     Result screen says plainly that Windows deleted it permanently. This is a last line of
+     honesty, not a guard; layers 1–2 should make it unreachable.
+4. **Batching:** delete in batches. When the sink vetoes, record that item as "not recycled
+   (reason)" and resume with the rest in a new operation.
+5. **Undo:** record the exact bin item path that `PostDeleteItem` hands back
+   (`C:\$Recycle.Bin\<SID>\$R…`) together with the original full path. Restore through the
+   shell using that exact item, never by matching display names. Long-path restore must be
+   proven in milestone (e) before Undo ships; if it can't be made reliable, those items are
+   labelled "Undo not available" *before* confirmation.
+6. **Locked files:** `0x80270027` and similar map to "Skipped: in use by another app".
+
+### Open items for milestone (e)
+
+* Confirm how Windows sets a volume's default bin capacity when `MaxCapacity` is absent (the
+  runner had 9,699 MB on a ~150 GB disk), and find a citable source. If none is found, treat
+  "no value" as "unknown" and fall back to a conservative cap.
+* Prove a restore path for files with known extensions and for paths longer than 260
+  characters.
+* Removable drives (USB sticks) and ReFS / Dev Drive volumes.
