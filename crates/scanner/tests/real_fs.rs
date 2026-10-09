@@ -117,13 +117,14 @@ mod windows {
     use std::path::PathBuf;
     use std::process::Command;
 
+    /// `\\?\` form, built on `OsString` so names that aren't valid Unicode survive.
     fn verbatim(p: &Path) -> PathBuf {
-        let s = p.as_os_str().to_string_lossy();
-        if s.starts_with(r"\\?\") {
-            p.to_path_buf()
-        } else {
-            PathBuf::from(format!(r"\\?\{s}"))
+        if p.as_os_str().to_string_lossy().starts_with(r"\\?\") {
+            return p.to_path_buf();
         }
+        let mut s = OsString::from(r"\\?\");
+        s.push(p.as_os_str());
+        PathBuf::from(s)
     }
 
     #[test]
