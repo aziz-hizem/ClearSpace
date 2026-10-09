@@ -52,9 +52,9 @@ mod win {
     };
     use windows::Win32::UI::Shell::{
         FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOCONFIRMMKDIR, FOF_NOERRORUI, FOF_SILENT,
-        FOFX_RECYCLEONDELETE, FileOperation, IFileOperation, IFileOperationProgressSink,
-        IFileOperationProgressSink_Impl, IShellItem, SHCreateItemFromParsingName,
-        SIGDN_DESKTOPABSOLUTEPARSING, TSF_DELETE_RECYCLE_IF_POSSIBLE,
+        FOF_WANTNUKEWARNING, FOFX_RECYCLEONDELETE, FileOperation, IFileOperation,
+        IFileOperationProgressSink, IFileOperationProgressSink_Impl, IShellItem,
+        SHCreateItemFromParsingName, SIGDN_DESKTOPABSOLUTEPARSING, TSF_DELETE_RECYCLE_IF_POSSIBLE,
     };
     use windows::core::{HRESULT, PCWSTR, Ref, implement};
 
@@ -120,14 +120,29 @@ mod win {
             registry: Some(("MaxCapacity", 1)),
         },
         Scenario {
+            id: "over-quota-folder",
+            what: "Folder bigger than the quota, every file smaller (1 MB quota, 16 × 512 KB)",
+            ci_only: true,
+            registry: Some(("MaxCapacity", 1)),
+        },
+        Scenario {
+            id: "bin-nearly-full",
+            what: "Bin nearly full (10 MB quota, 9 MB already recycled, then a 5 MB file)",
+            ci_only: true,
+            registry: Some(("MaxCapacity", 10)),
+        },
+        Scenario {
             id: "network-path",
             what: "File addressed via network share (\\\\localhost\\C$)",
             ci_only: true,
             registry: None,
         },
     ];
-    const APPROACHES: &[(&str, &str)] =
-        &[("A", "trash crate"), ("B", "IFileOperation + veto sink")];
+    const APPROACHES: &[(&str, &str)] = &[
+        ("A", "trash crate"),
+        ("B", "IFileOperation + veto sink"),
+        ("B2", "B + FOF_WANTNUKEWARNING"),
+    ];
 
     pub fn main() -> ExitCode {
         let args: Vec<OsString> = std::env::args_os().collect();
@@ -141,8 +156,10 @@ mod win {
             .map(PathBuf::from);
         let ci = std::env::var("CLEARSPACE_SPIKE_CI").is_ok_and(|v| v == "1");
 
+        // %TEMP% is often an 8.3 short path (C:\Users\RUNNER~1\...), while the Recycle Bin
+        // records long paths. Compare like with like: use the long form throughout.
         let sandbox =
-            std::env::temp_dir().join(format!("clearspace-recycle-spike-{}", std::process::id()));
+            long_temp_dir().join(format!("clearspace-recycle-spike-{}", std::process::id()));
         fs::create_dir_all(&sandbox).expect("create sandbox");
         let exe = std::env::current_exe().expect("current exe");
 
@@ -188,7 +205,7 @@ mod win {
             let _ = f.write_all(md.as_bytes());
         }
         // Remove the sandbox (only our own directory under %TEMP%).
-        if sandbox.starts_with(std::env::temp_dir())
+        if sandbox.starts_with(long_temp_dir())
             && sandbox
                 .file_name()
                 .is_some_and(|n| n.to_string_lossy().starts_with("clearspace-recycle-spike-"))
@@ -196,6 +213,20 @@ mod win {
             let _ = fs::remove_dir_all(&sandbox);
         }
         ExitCode::SUCCESS
+    }
+
+    fn long_temp_dir() -> PathBuf {
+        let t = std::env::temp_dir();
+        match fs::canonicalize(&t) {
+            Ok(c) => {
+                let s = c.to_string_lossy();
+                match s.strip_prefix(r"\\?\") {
+                    Some(rest) if !rest.starts_with("UNC") => PathBuf::from(rest),
+                    _ => t,
+                }
+            }
+            Err(_) => t,
+        }
     }
 
     fn row(result: &str) -> String {
@@ -377,6 +408,23 @@ mod win {
         let target: PathBuf = match scenario {
             "small-file" | "bin-disabled" | "network-path" => write(dir.join("small.txt"), 1000),
             "over-quota" => write(dir.join("big.bin"), 8 << 20),
+            "over-quota-folder" => {
+                let f = dir.join("many");
+                fs::create_dir_all(&f).unwrap();
+                for i in 0..16 {
+                    write(f.join(format!("part{i}.bin")), 512 << 10);
+                }
+                f
+            }
+            "bin-nearly-full" => {
+                // Pre-fill the bin with 3 × 3 MB sandbox files, oldest first.
+                for i in 0..3 {
+                    let p = write(dir.join(format!("older{i}.bin")), 3 << 20);
+                    delete_with(approach, std::slice::from_ref(&p));
+                    std::thread::sleep(Duration::from_millis(1100));
+                }
+                write(dir.join("new.bin"), 5 << 20)
+            }
             "folder" => {
                 let f = dir.join("folder");
                 fs::create_dir_all(f.join("sub/deeper")).unwrap();
@@ -425,28 +473,26 @@ mod win {
 
         // 2. Delete.
         let start = Instant::now();
-        let (op, pre, post) = match approach {
-            "A" => (
-                match trash::delete(&delete_path) {
-                    Ok(()) => "ok".to_string(),
-                    Err(e) => format!("error: {e}"),
-                },
-                "n/a".to_string(),
-                "n/a".to_string(),
-            ),
-            _ => shell_delete(std::slice::from_ref(&delete_path)),
-        };
+        let d = delete_with(approach, std::slice::from_ref(&delete_path));
+        let (op, pre, mut post) = (d.op, d.pre, d.post);
         let ms = start.elapsed().as_millis();
         drop(_lock);
 
         // 3. Observe.
         let exists = exists(&target);
         let bin_item = find_in_bin(&target);
-        let outcome = match (exists, bin_item.is_some()) {
-            (true, _) => "kept (not deleted)".to_string(),
-            (false, true) => "recycled".to_string(),
-            (false, false) => "**PERMANENTLY DELETED**".to_string(),
+        let outcome = match (exists, bin_item.is_some(), d.bin_items > 0) {
+            (true, _, _) => "kept (not deleted)".to_string(),
+            (false, true, _) => "recycled".to_string(),
+            (false, false, true) => "recycled (per shell; not found in bin listing)".to_string(),
+            (false, false, false) => "**PERMANENTLY DELETED**".to_string(),
         };
+        if scenario == "bin-nearly-full" {
+            let kept = (0..3)
+                .filter(|i| find_in_bin(&dir.join(format!("older{i}.bin"))).is_some())
+                .count();
+            post.push_str(&format!(" · older bin items still in bin: {kept}/3"));
+        }
         let undo = match bin_item {
             Some(item) => match trash::os_limited::restore_all([item]) {
                 Ok(()) if exists_or_retry(&target) => "restored".to_string(),
@@ -473,14 +519,14 @@ mod win {
 
         let b = make("b");
         let t = Instant::now();
-        let rb = shell_delete(&b).0;
+        let rb = shell_delete(&b, false).op;
         let tb = t.elapsed();
 
         let c = make("c");
         let t = Instant::now();
         let mut rc = "ok".to_string();
         for p in &c {
-            let r = shell_delete(std::slice::from_ref(p)).0;
+            let r = shell_delete(std::slice::from_ref(p), false).op;
             if r != "ok" {
                 rc = r;
             }
@@ -496,6 +542,30 @@ mod win {
             tc.as_millis(),
             gone(&c)
         )
+    }
+
+    struct Deleted {
+        op: String,
+        pre: String,
+        post: String,
+        /// Items the shell reported as now living in the Recycle Bin (B/B2 only).
+        bin_items: usize,
+    }
+
+    fn delete_with(approach: &str, paths: &[PathBuf]) -> Deleted {
+        match approach {
+            "A" => Deleted {
+                op: match trash::delete_all(paths) {
+                    Ok(()) => "ok".to_string(),
+                    Err(e) => format!("error: {e}"),
+                },
+                pre: "n/a".into(),
+                post: "n/a".into(),
+                bin_items: 0,
+            },
+            "B2" => shell_delete(paths, true),
+            _ => shell_delete(paths, false),
+        }
     }
 
     fn write(p: PathBuf, size: usize) -> PathBuf {
@@ -712,22 +782,24 @@ mod win {
         }
     }
 
-    /// Approach B. Returns (operation result, pre-delete flags, post-delete info).
-    fn shell_delete(paths: &[PathBuf]) -> (String, String, String) {
+    /// Approaches B / B2 (B2 adds FOF_WANTNUKEWARNING).
+    fn shell_delete(paths: &[PathBuf], nuke_warning: bool) -> Deleted {
         let log = Arc::new(Mutex::new(SinkLog::default()));
         let r: windows::core::Result<bool> = (|| {
             // SAFETY: COM is initialised (STA) on this thread; all interface pointers are
             // owned by windows-rs smart pointers; strings are NUL-terminated and outlive calls.
             unsafe {
                 let op: IFileOperation = CoCreateInstance(&FileOperation, None, CLSCTX_ALL)?;
-                op.SetOperationFlags(
-                    FOF_SILENT
-                        | FOF_NOCONFIRMATION
-                        | FOF_NOERRORUI
-                        | FOF_NOCONFIRMMKDIR
-                        | FOF_ALLOWUNDO
-                        | FOFX_RECYCLEONDELETE,
-                )?;
+                let mut flags = FOF_SILENT
+                    | FOF_NOCONFIRMATION
+                    | FOF_NOERRORUI
+                    | FOF_NOCONFIRMMKDIR
+                    | FOF_ALLOWUNDO
+                    | FOFX_RECYCLEONDELETE;
+                if nuke_warning {
+                    flags |= FOF_WANTNUKEWARNING;
+                }
+                op.SetOperationFlags(flags)?;
                 let sink: IFileOperationProgressSink = VetoSink {
                     log: Arc::clone(&log),
                 }
@@ -761,7 +833,17 @@ mod win {
         } else {
             summarize(&log.post)
         };
-        (op, pre, post)
+        let bin_items = log
+            .post
+            .iter()
+            .filter(|p| !p.ends_with("bin-item=NULL"))
+            .count();
+        Deleted {
+            op,
+            pre,
+            post,
+            bin_items,
+        }
     }
 
     fn summarize(v: &[String]) -> String {
