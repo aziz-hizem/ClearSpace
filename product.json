@@ -1,0 +1,10 @@
+{
+  "_readme": "Single source of product identity. Edit here, then run `npm run product:sync` (dev/build scripts do it automatically; CI fails if anything is out of sync). Values marked in `placeholders` are not final.",
+  "displayName": "ClearSpace",
+  "bundleId": "io.github.aziz-hizem.clearspace",
+  "publisher": "ClearSpace contributors",
+  "installerName": "ClearSpace",
+  "version": "0.1.0",
+  "license": null,
+  "placeholders": ["displayName", "bundleId", "publisher", "installerName", "license"]
+}

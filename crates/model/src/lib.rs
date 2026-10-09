@@ -17,6 +17,7 @@
 
 pub mod csv;
 mod ext;
+pub mod filetype;
 pub mod time;
 
 use std::collections::TryReserveError;

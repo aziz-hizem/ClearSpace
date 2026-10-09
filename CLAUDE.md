@@ -3,7 +3,8 @@
 ClearSpace is a Windows 10/11 disk analyzer with a Cleanup Assistant that **explains and
 recommends**; it never cleans on its own. "ClearSpace" is a working codename (a Windows
 cleanup app named "ClearSpace Disk" already exists); keep the product name in one place so a
-rename stays cheap.
+rename stays cheap: display name, bundle ID, publisher and installer name live only in
+`product.json` (everything else is derived from it).
 
 ## Safety principles (override everything else)
 
@@ -20,7 +21,10 @@ rename stays cheap.
    permanently. See `docs/spikes/recycle-bin.md`: never use the `trash` crate (it silently
    deletes permanently when the bin is off or the path is on a network share, and its
    restore is unreliable). Recycle via IFileOperation + the veto progress sink, plus a quota
-   pre-flight and a last-moment size check.
+   pre-flight and a last-moment size check. Owner's conditions: items failing the pre-checks
+   never reach the recycle call (only the separate permanent-delete path, with its own token
+   and extra confirmation; a test enforces this), and the Review screen shows per item whether
+   Undo is possible, offered only where restore is verified.
 4. **Unknown means untouched.** Only items matched by a curated rule can be recommended.
    Unmatched items are "Unknown, not recommended for deletion" and can only be inspected.
    The user's own documents/photos/videos are never labelled safe; they appear only in
@@ -63,8 +67,9 @@ rename stays cheap.
 - Code must be testable off-Windows where possible: platform-independent logic sits behind
   traits (`scanner::FsSource`); Windows code is `#[cfg(windows)]` and exercised in CI on
   `windows-latest`. Locally run:
-  `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-  and `cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings`.
+  `cargo fmt --check && cargo clippy --workspace --exclude clearspace-app --all-targets -- -D warnings && cargo test --workspace --exclude clearspace-app`
+  and `cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings`
+  (build the UI first: the app crate embeds `dist/`).
 - Test fixtures that need link creation must `#[allow(clippy::disallowed_methods)]` locally,
   inside test code only, with a comment.
 - Targets: Windows 10 22H2 and Windows 11 24H2+, x64. ARM64 is compile-only (experimental).
@@ -77,4 +82,15 @@ rename stays cheap.
 - `crates/scanner` — parallel directory scan behind `FsSource` (Windows / portable / fake).
 - `crates/scan-cli` — `cs-scan` developer CLI for exercising the scanner.
 - `crates/cleaner` — the only deleter (currently: Recycle Bin spike in `examples/`).
-- Planned: `mft`, `rules`, `safety`, `app` (Tauri), `scan-helper`, `ui/` (React).
+- `crates/treemap` — squarified layout + binary encoding (decoded by `ui/src/lib/treemapData.ts`).
+- `crates/service` — scan sessions + read-only queries; DTOs mirrored in `ui/src/lib/types.ts`.
+  The UI identifies items by (scan id, node id); it never sends paths to act on.
+- `crates/app` — Tauri v2 shell (Windows-only build; excluded from Linux clippy/tests).
+- `ui/` — React/TS/Tailwind v4/Vite; strings in `ui/src/locales/en.json` (no hard-coded copy,
+  no hard-coded product name — use `PRODUCT_NAME` / `{{name}}`). Browser preview uses
+  `mockBackend.ts` sample data, never loaded inside the app.
+- `product.json` — single source of product identity; `scripts/product.mjs` syncs it.
+- Planned: `mft`, `rules`, `safety`, `scan-helper`.
+
+UI checks: `npm run lint && npm run typecheck && npm test`. Screenshots for visual review:
+`npx vite build && npx vite preview --port 4173 & node scripts/screenshots.mjs <dir> [light|dark]`.

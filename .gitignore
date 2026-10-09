@@ -6,3 +6,6 @@ dist/
 /spike-report*.md
 .DS_Store
 Thumbs.db
+/crates/app/gen/
+/screenshots/
+tsconfig.tsbuildinfo

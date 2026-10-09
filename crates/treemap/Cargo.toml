@@ -1,0 +1,13 @@
+[package]
+name = "clearspace-treemap"
+description = "Squarified, nested treemap layout over the ClearSpace file tree."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+clearspace-model.workspace = true
+
+[lints]
+workspace = true

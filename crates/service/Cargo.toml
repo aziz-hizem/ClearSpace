@@ -1,0 +1,19 @@
+[package]
+name = "clearspace-service"
+description = "Scan sessions and read-only queries behind the ClearSpace UI (no UI framework dependency)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+clearspace-model.workspace = true
+clearspace-scanner.workspace = true
+clearspace-treemap.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/model", "crates/scanner", "crates/scan-cli", "crates/cleaner"]
+members = ["crates/model", "crates/scanner", "crates/scan-cli", "crates/cleaner", "crates/treemap", "crates/service", "crates/app"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,12 +12,22 @@ publish = false
 [workspace.dependencies]
 clearspace-model = { path = "crates/model" }
 clearspace-scanner = { path = "crates/scanner" }
+clearspace-treemap = { path = "crates/treemap" }
+clearspace-service = { path = "crates/service" }
 rayon = "1.12"
 tempfile = "3.27"
 ctrlc = "3.5"
 trash = "5.2"
 windows = "0.62"
 windows-core = "0.62"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri = "2.12"
+tauri-build = "2.7"
+tauri-plugin-dialog = "2.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
