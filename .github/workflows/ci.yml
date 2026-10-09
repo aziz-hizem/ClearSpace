@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  windows:
+    name: Windows x64 — lint, test, smoke
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy (deletion guard is a hard error)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --workspace
+
+      - name: Build cs-scan (release)
+        run: cargo build --release -p clearspace-scan-cli
+      - name: Smoke-scan C:\Windows (read-only)
+        run: ./target/release/cs-scan.exe C:\Windows --top 10 --quiet --csv windows-scan.csv
+      - name: Smoke-scan the user profile (read-only)
+        run: ./target/release/cs-scan.exe $env:USERPROFILE --top 5 --quiet
+
+      - name: Recycle Bin spike (sandbox files only)
+        env:
+          CLEARSPACE_SPIKE_CI: "1"
+        run: |
+          cargo run --release -p clearspace-cleaner --example recycle_spike -- --report spike-report.md
+          Get-Content spike-report.md | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cs-scan-windows-x64
+          path: target/release/cs-scan.exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: recycle-spike-report
+          path: spike-report.md
+
+  windows-arm64:
+    name: Windows ARM64 — compile only (experimental)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Build for aarch64-pc-windows-msvc
+        run: cargo build --workspace --all-targets --target aarch64-pc-windows-msvc
+
+  linux:
+    name: Linux — portable core (fast feedback)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
