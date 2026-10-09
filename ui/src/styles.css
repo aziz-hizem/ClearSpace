@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+/* Theme: data-theme is always set by JS to the resolved theme ("light" | "dark"). The media
+   query only covers the instant before JS runs. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  color-scheme: light;
+  --page: #f3f3f1;
+  --surface: #fcfcfb;
+  --surface-raised: #ffffff;
+  --surface-sunken: #ecebe7;
+  --hover: rgba(11, 11, 11, 0.05);
+  --pressed: rgba(11, 11, 11, 0.09);
+  --border: rgba(11, 11, 11, 0.1);
+  --border-strong: rgba(11, 11, 11, 0.18);
+  --text: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #6b6a66;
+  --accent: #2a78d6;
+  --accent-hover: #256abf;
+  --accent-text: #1c5cab;
+  --on-accent: #ffffff;
+  --focus: #1c5cab;
+  --success: #006300;
+  --warning: #8a5a00;
+  --danger: #b42a2a;
+  --meter-track: #e1e0d9;
+  /* Treemap folders (neutral, by depth) */
+  --tm-folder-1: #e7e6e1;
+  --tm-folder-2: #dddcd6;
+  --tm-folder-3: #d3d2cb;
+  --tm-header-text: #33322f;
+  /* Categorical slots (validated reference palette, light) */
+  --cat-documents: #2a78d6;
+  --cat-images: #eb6834;
+  --cat-videos: #1baf7a;
+  --cat-audio: #eda100;
+  --cat-archives: #e87ba4;
+  --cat-apps: #008300;
+  --cat-data: #6250d6;
+  --cat-code: #e34948;
+  --cat-other: #a9a8a1;
+  /* Sequential (age): blue, light -> dark */
+  --age-0: #cde2fb;
+  --age-1: #9ec5f4;
+  --age-2: #5598e7;
+  --age-3: #256abf;
+  --age-4: #104281;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.06);
+  --radius: 8px;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #141414;
+    --surface: #1c1c1b;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #141414;
+  --surface: #1c1c1b;
+  --surface-raised: #252524;
+  --surface-sunken: #111111;
+  --hover: rgba(255, 255, 255, 0.06);
+  --pressed: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #9f9d95;
+  --accent: #3987e5;
+  --accent-hover: #5598e7;
+  --accent-text: #86b6ef;
+  --on-accent: #ffffff;
+  --focus: #86b6ef;
+  --success: #3fbf3f;
+  --warning: #f2b84b;
+  --danger: #ef7d7d;
+  --meter-track: #2c2c2a;
+  --tm-folder-1: #2a2a28;
+  --tm-folder-2: #323230;
+  --tm-folder-3: #3a3a37;
+  --tm-header-text: #e4e3de;
+  --cat-documents: #3987e5;
+  --cat-images: #d95926;
+  --cat-videos: #199e70;
+  --cat-audio: #c98500;
+  --cat-archives: #d55181;
+  --cat-apps: #008300;
+  --cat-data: #9085e9;
+  --cat-code: #e66767;
+  --cat-other: #6f6e69;
+  --age-0: #9ec5f4;
+  --age-1: #5598e7;
+  --age-2: #2a78d6;
+  --age-3: #1c5cab;
+  --age-4: #104281;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-raised: var(--surface-raised);
+  --color-sunken: var(--surface-sunken);
+  --color-hover: var(--hover);
+  --color-pressed: var(--pressed);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-secondary);
+  --color-ink-3: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-text);
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-track: var(--meter-track);
+  --radius-card: var(--radius);
+  --shadow-card: var(--shadow);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Visible focus everywhere, only for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -200px 0;
+  }
+  to {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-sunken) 0, var(--hover) 50%, var(--surface-sunken) 100%);
+  background-size: 200px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fade-in {
+  animation: fade-in 180ms ease-out both;
+}
+
+@media (forced-colors: active) {
+  .meter-fill {
+    background: Highlight !important;
+  }
+}

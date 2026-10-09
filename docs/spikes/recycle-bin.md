@@ -1,6 +1,6 @@
 # Spike: making "Move to Recycle Bin" fail instead of silently deleting permanently
 
-**Status:** complete — awaiting owner sign-off  ·  **Milestone:** (a)  ·  **Code:**
+**Status:** approved by the owner with conditions (2026-10-09)  ·  **Milestone:** (a)  ·  **Code:**
 `crates/cleaner/examples/recycle_spike.rs`  ·  **Runs in:** GitHub Actions `windows-latest`
 and, for the non-registry scenarios, on any Windows PC.
 
@@ -102,7 +102,18 @@ Performance (300 small files): `trash::delete_all` 1.1–1.7 s, one IFileOperati
 * `PreDeleteItem` returning `E_ABORT` cancels the *whole remaining batch* (as documented), so
   one vetoed item stops everything queued after it.
 
-## Decision (proposed; needs your OK before the cleaner is built)
+## Owner's conditions (binding)
+
+1. Items that fail the pre-checks (bin off, network/removable drive, over the size limit) must
+   **never reach the recycle call**. They are removable only through the separate
+   permanent-delete opt-in, with its own token and extra confirmation. A test must fail if an
+   over-limit file is ever passed to the recycle path.
+2. The Review screen shows, per item, whether Undo is possible *before* confirmation. Undo is
+   offered only where restore has been verified.
+3. Product display name, bundle ID and installer name live in one config (`product.json`), so
+   a rename is a one-line change.
+
+## Decision (approved)
 
 1. **Don't use the `trash` crate** for deleting or restoring. It silently deletes permanently in
    two common situations and its restore is unreliable. It stays only as a dev-dependency of

@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "ui/**",
+      "scripts/**",
+      "*.ts",
+      "*.json",
+      "!crates",
+      "!target",
+      "!dist",
+      "!node_modules",
+      "!package-lock.json"
+    ]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 110 },
+  "css": { "parser": { "tailwindDirectives": true } },
+  "linter": {
+    "rules": {
+      "correctness": { "useExhaustiveDependencies": "warn" }
+    }
+  },
+  "javascript": { "formatter": { "quoteStyle": "double" } },
+  "overrides": [
+    {
+      "includes": ["ui/src/components/explore/ContentsList.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useFocusableInteractive": "off",
+            "useSemanticElements": "off",
+            "useKeyWithClickEvents": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["ui/src/styles.css"],
+      "linter": { "rules": { "complexity": { "noImportantStyles": "off" } } }
+    }
+  ]
+}
