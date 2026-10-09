@@ -43,7 +43,10 @@ const FORBIDDEN: &[&str] = &[
 const MAY_DEPEND_ON_CLEANER: &[&str] = &["crates/app"];
 
 fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap()
 }
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -78,7 +81,10 @@ fn violations(source: &str) -> Vec<(usize, &'static str)> {
 }
 
 fn rel(root: &Path, p: &Path) -> String {
-    p.strip_prefix(root).unwrap_or(p).to_string_lossy().replace('\\', "/")
+    p.strip_prefix(root)
+        .unwrap_or(p)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 #[test]
@@ -86,7 +92,10 @@ fn no_deletion_code_outside_the_cleaner() {
     let root = workspace_root();
     let mut files = Vec::new();
     rust_files(&root, &mut files);
-    assert!(files.len() > 5, "audit found too few files; is the root right? {root:?}");
+    assert!(
+        files.len() > 5,
+        "audit found too few files; is the root right? {root:?}"
+    );
     let mut report = Vec::new();
     for f in &files {
         let r = rel(&root, f);
@@ -111,12 +120,16 @@ fn only_approved_crates_depend_on_the_cleaner_or_trash() {
     let mut report = Vec::new();
     for dir in fs::read_dir(root.join("crates")).unwrap().flatten() {
         let manifest = dir.path().join("Cargo.toml");
-        let Ok(text) = fs::read_to_string(&manifest) else { continue };
+        let Ok(text) = fs::read_to_string(&manifest) else {
+            continue;
+        };
         let r = rel(&root, &dir.path());
         if r == "crates/cleaner" {
             continue;
         }
-        let deps_cleaner = text.lines().any(|l| l.trim_start().starts_with("clearspace-cleaner"));
+        let deps_cleaner = text
+            .lines()
+            .any(|l| l.trim_start().starts_with("clearspace-cleaner"));
         let deps_trash = text.lines().any(|l| l.trim_start().starts_with("trash"));
         if deps_trash {
             report.push(format!("{r} depends on `trash`"));
@@ -130,8 +143,14 @@ fn only_approved_crates_depend_on_the_cleaner_or_trash() {
 
 #[test]
 fn the_audit_actually_detects_things() {
-    assert_eq!(violations("std::fs::remove_file(p);"), vec![(1, "remove_file")]);
-    assert_eq!(violations("let x = 1; // remove_file in a comment is fine"), vec![]);
+    assert_eq!(
+        violations("std::fs::remove_file(p);"),
+        vec![(1, "remove_file")]
+    );
+    assert_eq!(
+        violations("let x = 1; // remove_file in a comment is fine"),
+        vec![]
+    );
     assert!(!violations("unsafe { DeleteFileW(w) }").is_empty());
     assert!(!violations("op.DeleteItem(&i, None)?; let o: IFileOperation = x;").is_empty());
 }
