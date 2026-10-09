@@ -601,10 +601,26 @@ mod win {
     }
 
     fn find_in_bin(original: &Path) -> Option<trash::TrashItem> {
-        trash::os_limited::list()
-            .ok()?
-            .into_iter()
+        let items = trash::os_limited::list().ok()?;
+        if let Some(i) = items
+            .iter()
             .find(|i| same_path(&i.original_path(), original))
+        {
+            return Some(i.clone());
+        }
+        // Hypothesis under test: the listed name is the *display* name, which drops the
+        // extension of known file types when Explorer hides extensions (the default).
+        let stem = original.file_stem()?.to_string_lossy().to_lowercase();
+        let parent = original.parent()?;
+        let by_stem = items.iter().find(|i| {
+            same_path(&i.original_parent, parent) && i.name.to_string_lossy().to_lowercase() == stem
+        })?;
+        eprintln!(
+            "  bin listing name for {:?} is {:?} (extension dropped)",
+            original.file_name().unwrap_or_default(),
+            by_stem.name
+        );
+        Some(by_stem.clone())
     }
 
     /// Removes from the Recycle Bin only items that originally lived in our sandbox.
