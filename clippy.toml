@@ -1,0 +1,18 @@
+# Safety principle 2: deletion code lives in exactly ONE crate (crates/cleaner).
+# Every crate except `clearspace-cleaner` is denied these APIs via
+# `[workspace.lints.clippy] disallowed_methods = "deny"`. The cleaner crate
+# opts out explicitly at its crate root. `crates/cleaner/tests/deletion_audit.rs`
+# additionally scans the source tree for Win32/COM deletion calls that clippy
+# cannot see (FFI, COM vtables).
+disallowed-methods = [
+  { path = "std::fs::remove_file", reason = "Only crates/cleaner may delete files (SAFETY.md)." },
+  { path = "std::fs::remove_dir", reason = "Only crates/cleaner may delete files (SAFETY.md)." },
+  { path = "std::fs::remove_dir_all", reason = "Only crates/cleaner may delete files (SAFETY.md)." },
+  { path = "std::fs::hard_link", reason = "Only test fixtures may create links; allow explicitly in test code." },
+  { path = "std::os::windows::fs::symlink_dir", reason = "Only test fixtures may create links; allow explicitly in test code.", allow-invalid = true },
+  { path = "std::os::windows::fs::symlink_file", reason = "Only test fixtures may create links; allow explicitly in test code.", allow-invalid = true },
+  { path = "std::fs::rename", reason = "Only crates/cleaner may move or modify user files (SAFETY.md)." },
+  { path = "std::fs::set_permissions", reason = "Only crates/cleaner may modify user files (SAFETY.md)." },
+  { path = "trash::delete", reason = "Only crates/cleaner may send items to the Recycle Bin.", allow-invalid = true },
+  { path = "trash::delete_all", reason = "Only crates/cleaner may send items to the Recycle Bin.", allow-invalid = true },
+]
