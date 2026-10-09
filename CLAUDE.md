@@ -17,7 +17,10 @@ rename stays cheap.
 3. **Recycle Bin by default.** Permanent deletion is an explicit per-run opt-in with an extra
    confirmation. Where recycling is impossible (bin disabled, item over quota, removable or
    network drive), say so clearly *before* the user confirms — never silently delete
-   permanently. See `docs/spikes/recycle-bin.md`.
+   permanently. See `docs/spikes/recycle-bin.md`: never use the `trash` crate (it silently
+   deletes permanently when the bin is off or the path is on a network share, and its
+   restore is unreliable). Recycle via IFileOperation + the veto progress sink, plus a quota
+   pre-flight and a last-moment size check.
 4. **Unknown means untouched.** Only items matched by a curated rule can be recommended.
    Unmatched items are "Unknown, not recommended for deletion" and can only be inspected.
    The user's own documents/photos/videos are never labelled safe; they appear only in
@@ -55,6 +58,8 @@ rename stays cheap.
 - Every cleanup rule must cite a source URL and `verified_on` date. If a path cannot be
   confirmed safe, leave it out or make it advise-only. Never guess.
 - Don't copy code, assets or branding from WizTree or any other product.
+- Compare paths only after canonicalising them (long names, not 8.3 `RUNNER~1`; case;
+  `\\?\` prefix). The first Recycle Bin spike run was fooled by exactly this.
 - Code must be testable off-Windows where possible: platform-independent logic sits behind
   traits (`scanner::FsSource`); Windows code is `#[cfg(windows)]` and exercised in CI on
   `windows-latest`. Locally run:
